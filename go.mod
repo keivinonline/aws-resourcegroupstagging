@@ -4,4 +4,7 @@ go 1.20
 
 require github.com/aws/aws-sdk-go v1.44.293
 
-require github.com/jmespath/go-jmespath v0.4.0 // indirect
+require (
+	github.com/jmespath/go-jmespath v0.4.0 // indirect
+	github.com/joho/godotenv v1.5.1 // indirect
+)
