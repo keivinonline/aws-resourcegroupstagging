@@ -3,15 +3,37 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/resourcegroupstaggingapi"
+	"github.com/joho/godotenv"
 )
+
+func init() {
+	// Load godotenv
+	err := godotenv.Load(
+		".env",
+		".tags.env",
+	)
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+}
 
 func main() {
 	var err error
+
+	// fetch tags and convert to map
+	tagKeysList := strings.Split(os.Getenv("TAG_KEYS"), ",")
+	tagValuesList := strings.Split(os.Getenv("TAG_VALUES"), ",")
+	tagMap, ok := combineListsToMap(tagKeysList, &tagValuesList)
+	if !ok {
+		fmt.Println("Error: tagKeysList and tagValuesList are not the same length")
+	}
 
 	// get the region flag
 	regionFlag := flag.String("region", "", "AWS Region code")
@@ -21,6 +43,9 @@ func main() {
 
 	// get the untagged flag
 	untaggedFlag := flag.Bool("untagged", false, "Display resources without tag if set")
+
+	// get the applyTags flag
+	applyTags := flag.Bool("applytags", false, "Apply tags to resources if set")
 
 	// parse all the flags
 	flag.Parse()
@@ -44,6 +69,13 @@ func main() {
 	var resourcesInput *resourcegroupstaggingapi.GetResourcesInput
 	var resourcesOutput *resourcegroupstaggingapi.GetResourcesOutput
 	var counter int = 0
+
+	// tagging Input/Output variables
+	var availableResourceARNList []*string
+	var availableResourceARNListFinal []*string
+	var taggedResourceARNList []*string
+
+	failureInfoMap := make(map[string]string)
 
 	// loop over resources
 	for {
@@ -76,8 +108,10 @@ func main() {
 				continue
 			}
 
-			printResource(resource)
+			// printResource(resource) // to be removed ?
 			counter = counter + 1
+			// add resource to list
+			availableResourceARNList = append(availableResourceARNList, resource.ResourceARN)
 		}
 
 		// loop until the paginationToken is empty, no more pages
@@ -87,11 +121,88 @@ func main() {
 		}
 	}
 
+	// Apply tags section
+	if *applyTags {
+		availableResourceARNListFinal = availableResourceARNList
+		for i := 0; i < len(availableResourceARNListFinal); i += 20 {
+			start := i
+			end := i + 20
+			if end > len(availableResourceARNListFinal) {
+				end = len(availableResourceARNListFinal)
+			}
+			fmt.Printf("start: %v, end: %v\n", start, end)
+			ARNListToProcess := availableResourceARNListFinal[start:end]
+
+			// create a resourcegroupstaggingapi.TagResourcesInput object
+			// and pass it to the TagResources method
+			customTagResourcesInput := &resourcegroupstaggingapi.TagResourcesInput{
+				ResourceARNList: ARNListToProcess,
+				// ResourceARNList: []*string{
+				// 	// aws.String(awsResource),
+				// 	resourceArn,
+				// },
+				Tags: tagMap,
+			}
+			k, err := client.TagResources(customTagResourcesInput)
+			if err != nil {
+				fmt.Println(err)
+			}
+
+			// check len of k.FailedResourcesMap
+			if len(k.FailedResourcesMap) != 0 {
+				// fmt.Println("TagResources failed")
+				// loop and check the output from TagResources
+				for arn, v := range k.FailedResourcesMap {
+					failureInfoMap[arn] = v.String()
+
+					// failureInfoList = append(failureInfoList, v)
+					// fmt.Printf("v: %v\n", v)
+					// fmt.Println(v)
+					// fmt.Printf("v.ErrorCode: %v\n", *v.ErrorCode)
+					// fmt.Printf("v.ErrorMessage: %v\n", *v.ErrorMessage)
+					// fmt.Printf("v.StatusCode: %v\n", *v.StatusCode)
+				}
+			}
+			// } else {
+			// 	taggedResourceARNList = append(taggedResourceARNList, resourceArn)
+
+			// }
+		}
+	}
+	// }
+	fmt.Printf("\n## Tags ##\n")
+	// fmt.Println(tagMap)
+	for k, v := range tagMap {
+		fmt.Printf("%s: %s\n", k, *v)
+	}
+	fmt.Println()
+	fmt.Printf("\n## Summary ##\n")
 	fmt.Printf(`Looking for tag "%s" between resources in "%s"... `, *tagKeyFlag, *regionFlag)
 	if *untaggedFlag {
 		fmt.Printf("found %d untagged resources!\n", counter)
 	} else {
 		fmt.Printf("found %d tagged resources!\n", counter)
+	}
+	fmt.Printf("Failed resource map items: %v\n", len(failureInfoMap))
+	fmt.Printf("\n## Available Resources ARN ##\n")
+	for _, value := range availableResourceARNList {
+		fmt.Println(*value)
+	}
+
+	fmt.Printf("\n## Final Available Resources ARN ##\n")
+	for _, value := range availableResourceARNListFinal {
+		fmt.Println(*value)
+	}
+
+	fmt.Printf("\n## Tagged Resources ARN ##\n")
+	for _, value := range taggedResourceARNList {
+		fmt.Println(*value)
+	}
+
+	fmt.Printf("\n## Tagging errors ##\n")
+	for k, v := range failureInfoMap {
+		fmt.Printf("ARN: %s\n", k)
+		fmt.Printf("Error: %s\n", v)
 	}
 
 }
