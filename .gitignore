@@ -16,3 +16,6 @@ aws-tagged-resource-finder
 # custom
 aws-tags
 **/*.bak
+**/*.env
+results/*
+output/*
