@@ -41,6 +41,9 @@ func main() {
 	// get the tag key flag
 	tagKeyFlag := flag.String("tag", "", "Tag key to find")
 
+	// get the tag key flag
+	tagValueFlag := flag.String("value", "", "Tag value to find")
+
 	// get the untagged flag
 	untaggedFlag := flag.Bool("untagged", false, "Display resources without tag if set")
 
@@ -92,28 +95,71 @@ func main() {
 			fmt.Println(err)
 		}
 
+		// case 1) if I want to find a tag value
 		// for every resource
 		for _, resource := range resourcesOutput.ResourceTagMappingList {
 
-			// analyze tags
-			tagFound := tagExists(resource.Tags, tagKeyFlag)
+			if *tagKeyFlag == "" {
+				// analyze tags
+				tagFound := tagExists(resource.Tags, tagKeyFlag)
 
-			// if the resource is tagged and I want untagged resource then skip
-			if tagFound && *untaggedFlag {
-				continue
+				// if the resource is tagged and I want untagged resource then skip
+				if tagFound && *untaggedFlag {
+					continue
+				}
+
+				// if the resource is not tagged and I want tagged resource then skip
+				if !tagFound && !*untaggedFlag {
+					continue
+				}
+
+				// printResource(resource) // to be removed ?
+				counter = counter + 1
+				// add resource to list
+				availableResourceARNList = append(availableResourceARNList, resource.ResourceARN)
+			} else {
+				// analyze tags values
+				// analyze tags
+				tagAndValueFound := tagValueExists(resource.Tags, tagKeyFlag, tagValueFlag)
+
+				// if the resource is tagged and I want untagged resource then skip
+				if tagAndValueFound && *untaggedFlag {
+					continue
+				}
+
+				// if the resource is not tagged and I want tagged resource then skip
+				if !tagAndValueFound && !*untaggedFlag {
+					continue
+				}
+
+				// printResource(resource) // to be removed ?
+				counter = counter + 1
+				// add resource to list
+				availableResourceARNList = append(availableResourceARNList, resource.ResourceARN)
+
 			}
-
-			// if the resource is not tagged and I want tagged resource then skip
-			if !tagFound && !*untaggedFlag {
-				continue
-			}
-
-			// printResource(resource) // to be removed ?
-			counter = counter + 1
-			// add resource to list
-			availableResourceARNList = append(availableResourceARNList, resource.ResourceARN)
 		}
+		// case 2) if I want to find a tag key and value
+		// for _, resource := range resourcesOutput.ResourceTagMappingList {
 
+		// 	// analyze tags
+		// 	tagAndValueFound := tagValueExists(resource.Tags, tagKeyFlag, tagValueFlag)
+
+		// 	// if the resource is tagged and I want untagged resource then skip
+		// 	if tagAndValueFound && *untaggedFlag {
+		// 		continue
+		// 	}
+
+		// 	// if the resource is not tagged and I want tagged resource then skip
+		// 	if !tagAndValueFound && !*untaggedFlag {
+		// 		continue
+		// 	}
+
+		// 	// printResource(resource) // to be removed ?
+		// 	counter = counter + 1
+		// 	// add resource to list
+		// 	availableResourceARNList = append(availableResourceARNList, resource.ResourceARN)
+		// }
 		// loop until the paginationToken is empty, no more pages
 		paginationToken = *resourcesOutput.PaginationToken
 		if *resourcesOutput.PaginationToken == "" {

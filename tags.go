@@ -13,3 +13,14 @@ func tagExists(tags []*resourcegroupstaggingapi.Tag, tagKey *string) bool {
 	}
 	return false
 }
+
+// create a function that checks for tags and value
+// and returns a bool
+func tagValueExists(tags []*resourcegroupstaggingapi.Tag, tagKey *string, tagValue *string) bool {
+	for _, tag := range tags {
+		if (*tag.Key == *tagKey) && (*tag.Value == *tagValue) {
+			return true
+		}
+	}
+	return false
+}
