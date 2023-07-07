@@ -10,3 +10,7 @@ import (
 func printResource(resource *resourcegroupstaggingapi.ResourceTagMapping) {
 	fmt.Printf("%s\n", *resource.ResourceARN)
 }
+
+func getResourceARN(resource *resourcegroupstaggingapi.ResourceTagMapping) string {
+	return *resource.ResourceARN
+}
