@@ -62,36 +62,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// create the session
-	session := session.Must(session.NewSessionWithOptions(session.Options{
-		SharedConfigState: session.SharedConfigEnable,
-	}))
-	if *extra {
-		ec2Client := ec2.New(session, aws.NewConfig().WithRegion(*regionFlag))
-		results, ok := ec2Client.DescribeVpcEndpoints(&ec2.DescribeVpcEndpointsInput{})
-		if ok != nil {
-			fmt.Println("Error: could not describe VPC endpoints")
-		}
-		// fmt.Println(results.VpcEndpoints)
-		for k, v := range results.VpcEndpoints {
-			// fmt.Printf("%v : %v\n", k, *v.VpcEndpointId)
-			// fmt.Printf("%v : %v\n", k, *v.OwnerId)
-			// format to arn
-			arn := fmt.Sprintf("arn:aws:ec2:%v:%v:vpc-endpoint/%v", *regionFlag, *v.OwnerId, *v.VpcEndpointId)
-			fmt.Printf("%v : %v\n", k, arn)
-		}
-
-		// for k,v := results.VpcEndpoints {
-		// 	fmt.Printf("%v : %v",k,*v.VpcEndpointId)
-		// }
-		// exit program
-		os.Exit(0)
-
-	}
-
-	// create the ResourceGroupsTaggingAPI client
-	client := resourcegroupstaggingapi.New(session, aws.NewConfig().WithRegion(*regionFlag))
-
 	// pagination and Input/Output variables
 	var paginationToken string = ""
 	var resourcesInput *resourcegroupstaggingapi.GetResourcesInput
@@ -104,6 +74,31 @@ func main() {
 	var taggedResourceARNList []*string
 
 	failureInfoMap := make(map[string]string)
+
+	// extra resources to tag
+	var extraResourcesARNList []*string
+
+	// create the session
+	session := session.Must(session.NewSessionWithOptions(session.Options{
+		SharedConfigState: session.SharedConfigEnable,
+	}))
+
+	// create the ResourceGroupsTaggingAPI client
+	client := resourcegroupstaggingapi.New(session, aws.NewConfig().WithRegion(*regionFlag))
+
+	if *extra {
+		ec2Client := ec2.New(session, aws.NewConfig().WithRegion(*regionFlag))
+		results, ok := ec2Client.DescribeVpcEndpoints(&ec2.DescribeVpcEndpointsInput{})
+		if ok != nil {
+			fmt.Println("Error: could not describe VPC endpoints")
+		}
+		// fmt.Println(results.VpcEndpoints)
+		for _, v := range results.VpcEndpoints {
+			arn := fmt.Sprintf("arn:aws:ec2:%v:%v:vpc-endpoint/%v", *regionFlag, *v.OwnerId, *v.VpcEndpointId)
+			extraResourcesARNList = append(extraResourcesARNList, &arn)
+		}
+
+	}
 
 	// loop over resources
 	for {
@@ -192,9 +187,10 @@ func main() {
 		}
 	}
 
+	// combine list
+	availableResourceARNListFinal = append(availableResourceARNList, extraResourcesARNList...)
 	// Apply tags section
 	if *applyTags {
-		availableResourceARNListFinal = availableResourceARNList
 		for i := 0; i < len(availableResourceARNListFinal); i += 20 {
 			start := i
 			end := i + 20
@@ -225,19 +221,8 @@ func main() {
 				// loop and check the output from TagResources
 				for arn, v := range k.FailedResourcesMap {
 					failureInfoMap[arn] = v.String()
-
-					// failureInfoList = append(failureInfoList, v)
-					// fmt.Printf("v: %v\n", v)
-					// fmt.Println(v)
-					// fmt.Printf("v.ErrorCode: %v\n", *v.ErrorCode)
-					// fmt.Printf("v.ErrorMessage: %v\n", *v.ErrorMessage)
-					// fmt.Printf("v.StatusCode: %v\n", *v.StatusCode)
 				}
 			}
-			// } else {
-			// 	taggedResourceARNList = append(taggedResourceARNList, resourceArn)
-
-			// }
 		}
 	}
 	// }
@@ -248,15 +233,24 @@ func main() {
 	}
 	fmt.Println()
 	fmt.Printf("\n## Summary ##\n")
+	fmt.Printf("Total resources mactched via resource tagging API: %v\n", len(availableResourceARNList))
+	fmt.Printf("Extra resources matched: %v\n", len(extraResourcesARNList))
+	fmt.Printf("Total sum : %v\n", len(availableResourceARNListFinal))
+
 	fmt.Printf(`Looking for tag "%s" between resources in "%s"... `, *tagKeyFlag, *regionFlag)
 	if *untaggedFlag {
 		fmt.Printf("found %d untagged resources!\n", counter)
 	} else {
 		fmt.Printf("found %d tagged resources!\n", counter)
 	}
+
 	fmt.Printf("Failed resource map items: %v\n", len(failureInfoMap))
 	fmt.Printf("\n## Available Resources ARN ##\n")
 	for _, value := range availableResourceARNList {
+		fmt.Println(*value)
+	}
+	fmt.Printf("\n## Extra Resources ARN ##\n")
+	for _, value := range extraResourcesARNList {
 		fmt.Println(*value)
 	}
 
