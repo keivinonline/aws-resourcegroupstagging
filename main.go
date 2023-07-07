@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/resourcegroupstaggingapi"
 	"github.com/joho/godotenv"
 )
@@ -50,6 +51,8 @@ func main() {
 	// get the applyTags flag
 	applyTags := flag.Bool("applytags", false, "Apply tags to resources if set")
 
+	// get the extra resources flag
+	extra := flag.Bool("extra", false, "Additional resources to tag")
 	// parse all the flags
 	flag.Parse()
 
@@ -63,6 +66,28 @@ func main() {
 	session := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 	}))
+	if *extra {
+		ec2Client := ec2.New(session, aws.NewConfig().WithRegion(*regionFlag))
+		results, ok := ec2Client.DescribeVpcEndpoints(&ec2.DescribeVpcEndpointsInput{})
+		if ok != nil {
+			fmt.Println("Error: could not describe VPC endpoints")
+		}
+		// fmt.Println(results.VpcEndpoints)
+		for k, v := range results.VpcEndpoints {
+			// fmt.Printf("%v : %v\n", k, *v.VpcEndpointId)
+			// fmt.Printf("%v : %v\n", k, *v.OwnerId)
+			// format to arn
+			arn := fmt.Sprintf("arn:aws:ec2:%v:%v:vpc-endpoint/%v", *regionFlag, *v.OwnerId, *v.VpcEndpointId)
+			fmt.Printf("%v : %v\n", k, arn)
+		}
+
+		// for k,v := results.VpcEndpoints {
+		// 	fmt.Printf("%v : %v",k,*v.VpcEndpointId)
+		// }
+		// exit program
+		os.Exit(0)
+
+	}
 
 	// create the ResourceGroupsTaggingAPI client
 	client := resourcegroupstaggingapi.New(session, aws.NewConfig().WithRegion(*regionFlag))
